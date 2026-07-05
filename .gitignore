@@ -3,6 +3,10 @@
 # dependencies
 node_modules/
 
+# vendored agent skills (fetched via skills-lock.json)
+.agents/skills/
+.claude/skills/
+
 # Expo
 .expo/
 dist/
