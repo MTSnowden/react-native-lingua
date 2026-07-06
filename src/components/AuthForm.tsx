@@ -1,3 +1,4 @@
+import { useSignIn, useSignUp } from "@clerk/expo";
 import { Ionicons } from "@expo/vector-icons";
 import { Href, Link, useRouter } from "expo-router";
 import { useState } from "react";
@@ -45,11 +46,14 @@ export function AuthForm({
   const [error, setError] = useState("");
   const VERIFICATION_CODE_LENGTH = 6;
 
+  const { signUp } = useSignUp();
+  const { signIn } = useSignIn();
+
   function isValidEmail(value: string) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
   }
 
-  function handleSubmit() {
+  async function handleSubmit() {
     const trimmedEmail = email.trim();
     if (!trimmedEmail) {
       setError("Please enter your email.");
@@ -65,18 +69,107 @@ export function AuthForm({
       setError("Please enter your password.");
       return;
     }
-
     setError("");
-    setVerificationVisible(true);
+
+    // Ensure Clerk hooks are loaded
+    try {
+      if (showPassword) {
+        if (!signUp) {
+          setError("Auth not ready. Try again.");
+          return;
+        }
+
+        const { error } = await signUp.create({
+          emailAddress: trimmedEmail,
+          password: password,
+        } as any);
+
+        if (error) {
+          setError(error?.message || "Sign up failed");
+          return;
+        }
+
+        const sendRes = await signUp.verifications.sendEmailCode();
+        if (sendRes?.error) {
+          setError("Failed to send verification code. Try again.");
+          return;
+        }
+
+        setVerificationVisible(true);
+      } else {
+        if (!signIn) {
+          setError("Auth not ready. Try again.");
+          return;
+        }
+
+        const sendRes = await signIn.emailCode.sendCode({
+          emailAddress: trimmedEmail,
+        });
+
+        if (sendRes?.error) {
+          setError("Failed to send sign-in code. Try again.");
+          return;
+        }
+
+        setVerificationVisible(true);
+      }
+    } catch (err) {
+      setError("Authentication error. Please try again.");
+      console.error(err);
+    }
   }
 
-  function handleVerified(code: string) {
+  async function handleVerified(code: string) {
     if (code.length !== VERIFICATION_CODE_LENGTH) {
       return;
     }
 
-    setVerificationVisible(false);
-    router.replace("/");
+    setError("");
+
+    try {
+      if (showPassword) {
+        if (!signUp) {
+          setError("Auth not ready.");
+          return;
+        }
+
+        const verifyRes = await signUp.verifications.verifyEmailCode({ code });
+        if (verifyRes?.error) {
+          setError("Verification failed. Check the code and try again.");
+          return;
+        }
+
+        if (signUp.status === "complete") {
+          await signUp.finalize({
+            navigate: async () => {
+              router.replace("/");
+            },
+          } as any);
+        }
+      } else {
+        if (!signIn) {
+          setError("Auth not ready.");
+          return;
+        }
+
+        const verifyRes = await signIn.emailCode.verifyCode({ code });
+        if (verifyRes?.error) {
+          setError("Verification failed. Check the code and try again.");
+          return;
+        }
+
+        if (signIn.status === "complete") {
+          await signIn.finalize({
+            navigate: async () => router.replace("/"),
+          } as any);
+        }
+      }
+
+      setVerificationVisible(false);
+    } catch (err) {
+      setError("Verification error. Please try again.");
+      console.error(err);
+    }
   }
 
   return (
@@ -154,6 +247,19 @@ export function AuthForm({
           <View className="mt-6">
             <GradientButton label={submitLabel} onPress={handleSubmit} />
           </View>
+
+          {Platform.OS === "web" ? (
+            <View
+              nativeID="clerk-captcha"
+              style={{
+                width: 1,
+                height: 1,
+                opacity: 0,
+                position: "absolute",
+                left: -9999,
+              }}
+            />
+          ) : null}
 
           <View className="mt-6 flex-row items-center gap-3">
             <View className="h-px flex-1 bg-border" />

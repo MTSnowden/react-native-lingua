@@ -24,7 +24,7 @@ function SpeechBubble({
 
 export default function Onboarding() {
   const router = useRouter();
-
+  
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.neutral.background }}>
       <Stack.Screen options={{ headerShown: false }} />
